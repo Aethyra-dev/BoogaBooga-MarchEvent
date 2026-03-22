@@ -2,7 +2,6 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
 --// PLAYER
@@ -15,7 +14,7 @@ player.CharacterAdded:Connect(function(c)
     root = c:WaitForChild("HumanoidRootPart")
 end)
 
---// NETWORK
+--// MODULES (CACHE)
 local Packets = require(ReplicatedStorage.Modules:WaitForChild("Packets"))
 
 --// TIME
@@ -42,7 +41,7 @@ local TargetList = {
 --// SETTINGS
 local AUTO_SWING = false
 local STICK_TO_TARGET = false
-local MOVE_SPEED = 19 -- now tween speed
+local MOVE_SPEED = 19
 
 local lastSwing = 0
 
@@ -82,7 +81,6 @@ local swingBtn = makeBtn("Auto Swing: OFF", 30)
 local moveBtn = makeBtn("Move To Target: OFF", 60)
 local speedBtn = makeBtn("Move Speed: 19", 90)
 
--- target toggles container
 local listFrame = Instance.new("Frame", frame)
 listFrame.Size = UDim2.new(1,0,0,160)
 listFrame.Position = UDim2.new(0,0,0,130)
@@ -91,7 +89,6 @@ listFrame.BackgroundTransparency = 1
 local layout = Instance.new("UIListLayout", listFrame)
 layout.Padding = UDim.new(0,5)
 
--- create target toggles
 for name, data in pairs(TargetList) do
     local btn = Instance.new("TextButton", listFrame)
     btn.Size = UDim2.new(1,-10,0,22)
@@ -108,7 +105,6 @@ for name, data in pairs(TargetList) do
     end)
 end
 
--- toggle buttons
 swingBtn.MouseButton1Click:Connect(function()
     AUTO_SWING = not AUTO_SWING
     swingBtn.Text = "Auto Swing: " .. (AUTO_SWING and "ON" or "OFF")
@@ -120,31 +116,53 @@ moveBtn.MouseButton1Click:Connect(function()
 end)
 
 speedBtn.MouseButton1Click:Connect(function()
-    MOVE_SPEED = MOVE_SPEED + 1
+    MOVE_SPEED += 1
     if MOVE_SPEED > 19 then MOVE_SPEED = 1 end
     speedBtn.Text = "Move Speed: " .. MOVE_SPEED
 end)
 
---// GET BEST TARGET (PRIORITY BASED)
+--// ENTITY CACHE (NO MORE LAG 🔥)
+local Entities = {}
+
+local function isValidTarget(v)
+    return v:IsA("Model") and v:GetAttribute("EntityID") and TargetList[v.Name]
+end
+
+for _, v in ipairs(workspace:GetDescendants()) do
+    if isValidTarget(v) then
+        Entities[#Entities+1] = v
+    end
+end
+
+workspace.DescendantAdded:Connect(function(v)
+    if isValidTarget(v) then
+        Entities[#Entities+1] = v
+    end
+end)
+
+workspace.DescendantRemoving:Connect(function(v)
+    for i = #Entities, 1, -1 do
+        if Entities[i] == v then
+            table.remove(Entities, i)
+        end
+    end
+end)
+
+--// GET BEST TARGET
 local function getBestTarget()
-    local best = nil
-    local bestScore = math.huge
+    local best, bestScore = nil, math.huge
 
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v:GetAttribute("EntityID") then
-            local data = TargetList[v.Name]
-            if data and data.enabled then
-                local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local dist = (root.Position - part.Position).Magnitude
+    for _, v in ipairs(Entities) do
+        local data = TargetList[v.Name]
+        if data and data.enabled then
+            local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local dist = (root.Position - part.Position).Magnitude
+                local score = dist - (data.priority * 25)
 
-                    -- lower score = better
-                    local score = dist - (data.priority * 25)
-
-                    if score < bestScore then
-                        bestScore = score
-                        best = v
-                    end
+                if score < bestScore then
+                    bestScore = score
+                    best = v
                 end
             end
         end
@@ -153,52 +171,54 @@ local function getBestTarget()
     return best
 end
 
---// MOVE (TWEEN)
+--// MOVE
 local currentTween
+local lastTarget = nil
 
 local function moveTo(target)
+    if target == lastTarget then return end
+    lastTarget = target
+
     local part = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
     if not part then return end
 
-    if currentTween then currentTween:Cancel() end
+    if currentTween then
+        currentTween:Cancel()
+    end
 
-    -- move ABOVE the pot
     local height = part.Size.Y / 2 + 3
     local targetPos = part.Position + Vector3.new(0, height, 0)
-
-    local goal = {
-        CFrame = CFrame.new(targetPos)
-    }
 
     local dist = (root.Position - targetPos).Magnitude
     local time = dist / MOVE_SPEED
 
-    currentTween = TweenService:Create(root, TweenInfo.new(time, Enum.EasingStyle.Linear), goal)
+    currentTween = TweenService:Create(
+        root,
+        TweenInfo.new(time, Enum.EasingStyle.Linear),
+        {CFrame = CFrame.new(targetPos)}
+    )
+
     currentTween:Play()
 end
 
---// SWING (FILTERED)
+--// SWING
 local function swingNearby()
     local now = getServerTime()
-    if now - lastSwing < 0.05 then return end
+    if now - lastSwing < 0.08 then return end
     lastSwing = now
 
     local hits = {}
 
-    for _, v in pairs(workspace:GetDescendants()) do
-        if v:IsA("Model") and v:GetAttribute("EntityID") then
-            local data = TargetList[v.Name]
-            if data and data.enabled then
-                local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local dist = (root.Position - part.Position).Magnitude
-
-                    if dist <= 25 then -- RANGE (you can increase)
-                        table.insert(hits, {
-                            entityID = v:GetAttribute("EntityID"),
-                            buffer = nil
-                        })
-                    end
+    for _, v in ipairs(Entities) do
+        local data = TargetList[v.Name]
+        if data and data.enabled then
+            local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
+            if part then
+                if (root.Position - part.Position).Magnitude <= 25 then
+                    hits[#hits+1] = {
+                        entityID = v:GetAttribute("EntityID"),
+                        buffer = nil
+                    }
                 end
             end
         end
@@ -210,14 +230,21 @@ local function swingNearby()
             cframe = char:GetPivot(),
             timestamp = now
         })
-
-        print("hit count:", #hits)
     end
 end
 
---// LOOP
+--// LOOP (THROTTLED = BIG FPS BOOST)
+local target
+local lastTargetUpdate = 0
+
 RunService.RenderStepped:Connect(function()
-    local target = getBestTarget()
+    local now = tick()
+
+    if now - lastTargetUpdate > 0.12 then
+        lastTargetUpdate = now
+        target = getBestTarget()
+    end
+
     if not target then return end
 
     if STICK_TO_TARGET then
