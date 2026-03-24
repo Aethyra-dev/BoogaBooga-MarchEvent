@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UIS = game:GetService("UserInputService")
 
 --// PLAYER
 local player = Players.LocalPlayer
@@ -174,23 +175,29 @@ end
 --// MOVE
 local currentTween
 local lastTarget = nil
+local lastMoveTime = 0
 
 local function moveTo(target)
-    if target == lastTarget then return end
-    lastTarget = target
+    if not target or not root then return end
 
     local part = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
     if not part then return end
-
-    if currentTween then
-        currentTween:Cancel()
-    end
 
     local height = part.Size.Y / 2 + 3
     local targetPos = part.Position + Vector3.new(0, height, 0)
 
     local dist = (root.Position - targetPos).Magnitude
-    local time = dist / MOVE_SPEED
+
+    -- already close → don’t move
+    if dist < 3 then return end
+
+    -- cancel old tween if needed
+    if currentTween then
+        currentTween:Cancel()
+    end
+
+    -- calculate time (clamped so it doesn't get weird)
+    local time = math.clamp(dist / MOVE_SPEED, 0.1, 2)
 
     currentTween = TweenService:Create(
         root,
@@ -199,6 +206,8 @@ local function moveTo(target)
     )
 
     currentTween:Play()
+
+    lastMoveTime = tick()
 end
 
 --// SWING
@@ -247,7 +256,7 @@ RunService.RenderStepped:Connect(function()
 
     if not target then return end
 
-    if STICK_TO_TARGET then
+    if STICK_TO_TARGET and target then
         moveTo(target)
     end
 
@@ -255,3 +264,70 @@ RunService.RenderStepped:Connect(function()
         swingNearby()
     end
 end)
+
+--// OUTSIDE TOGGLE BUTTON (DRAGGABLE)
+local toggleGui = Instance.new("ScreenGui", game.CoreGui)
+toggleGui.Name = "PotFarm_Toggle"
+
+local toggleBtn = Instance.new("TextButton", toggleGui)
+toggleBtn.Size = UDim2.new(0, 120, 0, 30)
+toggleBtn.Position = UDim2.new(0, 20, 0.5, 0)
+toggleBtn.Text = "Hide UI"
+toggleBtn.BackgroundColor3 = Color3.fromRGB(30,30,30)
+toggleBtn.TextColor3 = Color3.new(1,1,1)
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 13
+toggleBtn.BorderSizePixel = 0
+Instance.new("UICorner", toggleBtn)
+
+-- toggle logic
+toggleBtn.MouseButton1Click:Connect(function()
+    gui.Enabled = not gui.Enabled
+    toggleBtn.Text = gui.Enabled and "Hide UI" or "Show UI"
+end)
+
+--// GENERIC DRAG FUNCTION (REUSABLE 🔥)
+local function makeDraggable(obj)
+    local dragging = false
+    local dragStart = nil
+    local startPos = nil
+
+    local function update(input)
+        local delta = input.Position - dragStart
+        obj.Position = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+    end
+
+    obj.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+            
+            dragging = true
+            dragStart = input.Position
+            startPos = obj.Position
+
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    obj.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch then
+            if dragging then
+                update(input)
+            end
+        end
+    end)
+end
+
+--// APPLY DRAGGING
+makeDraggable(toggleBtn)
+makeDraggable(frame)
