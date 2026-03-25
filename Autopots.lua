@@ -5,6 +5,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UIS = game:GetService("UserInputService")
 
+local rendering = require(ReplicatedStorage.Game.rendering)
+local interpolationBuffer = require(ReplicatedStorage.Game.rendering.interpolationBuffer)
+
 --// PLAYER
 local player = Players.LocalPlayer
 local char = player.Character or player.CharacterAdded:Wait()
@@ -211,13 +214,12 @@ end
 
 --// SWING
 local function swingNearby()
-    tast.delay(0.1)
     local now = getServerTime()
-    if now - lastSwing < 0.08 then
-        print("Too fast!")
-        return
-    end
+    if now - lastSwing < 0.08 then return end
     lastSwing = now
+
+    -- get valid buffer the same way the original script does
+    local buffer = interpolationBuffer.getBuffer(rendering.clientBuffer)
 
     local hits = {}
 
@@ -227,10 +229,10 @@ local function swingNearby()
             local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
             if part then
                 if (root.Position - part.Position).Magnitude <= 25 then
-                    hits[#hits+1] = {
-                        entityID = v:GetAttribute("EntityID"),
-                        buffer = nil
-                    }
+                    local id = v:GetAttribute("EntityID")
+                    if id then
+                        hits[#hits+1] = id   -- MUST be only the number
+                    end
                 end
             end
         end
@@ -240,7 +242,8 @@ local function swingNearby()
         Packets.SwingTool.send({
             entityIDs = hits,
             cframe = char:GetPivot(),
-            timestamp = now
+            timestamp = now,
+            buffer = buffer
         })
     end
 end
