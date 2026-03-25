@@ -211,12 +211,13 @@ end
 
 --// SWING
 local function swingNearby()
+    tast.delay(0.1)
     local now = getServerTime()
-    local delay = 0.08 - (now - lastSwing)
-    if delay > 0 then
-        task.wait(delay)
+    if now - lastSwing < 0.08 then
+        print("Too fast!")
+        return
     end
-    lastSwing = getServerTime()
+    lastSwing = now
 
     local hits = {}
 
