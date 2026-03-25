@@ -179,6 +179,9 @@ local currentTween
 local lastTarget = nil
 local lastMoveTime = 0
 
+local JUMP_DISTANCE = 0      -- distance required before it jumps
+local JUMP_HEIGHT = 7.2         -- how high the jump arc goes
+
 local function moveTo(target)
     if not target or not root then return end
 
@@ -193,29 +196,57 @@ local function moveTo(target)
     -- already close → don’t move
     if dist < 3 then return end
 
-    -- cancel old tween if needed
+    -- cancel old tween
     if currentTween then
         currentTween:Cancel()
     end
 
-    -- calculate time (clamped so it doesn't get weird)
     local time = math.clamp(dist / MOVE_SPEED, 0.1, 2)
 
-    currentTween = TweenService:Create(
+    -- WALK (no jump)
+    if dist < JUMP_DISTANCE then
+        currentTween = TweenService:Create(
+            root,
+            TweenInfo.new(time, Enum.EasingStyle.Linear),
+            {CFrame = CFrame.new(targetPos)}
+        )
+
+        currentTween:Play()
+        return
+    end
+
+    -- JUMP (arc movement)
+    local midPoint = (root.Position + targetPos) / 2 + Vector3.new(0, JUMP_HEIGHT, 0)
+
+    local jumpTween1 = TweenService:Create(
         root,
-        TweenInfo.new(time, Enum.EasingStyle.Linear),
+        TweenInfo.new(time / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        {CFrame = CFrame.new(midPoint)}
+    )
+
+    local jumpTween2 = TweenService:Create(
+        root,
+        TweenInfo.new(time / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
         {CFrame = CFrame.new(targetPos)}
     )
 
-    currentTween:Play()
+    jumpTween1:Play()
 
+    jumpTween1.Completed:Connect(function()
+        jumpTween2:Play()
+    end)
+
+    currentTween = jumpTween2
     lastMoveTime = tick()
 end
 
 --// SWING
 local function swingNearby()
     local now = getServerTime()
-    if now - lastSwing < 0.08 then return end
+    if now - lastSwing < 0.08 then
+        print("Too fast!")
+        return 
+    end
     lastSwing = now
 
     -- get valid buffer the same way the original script does
@@ -223,6 +254,7 @@ local function swingNearby()
 
     local hits = {}
 
+    print("Checking Entities")
     for _, v in ipairs(Entities) do
         local data = TargetList[v.Name]
         if data and data.enabled then
@@ -231,6 +263,7 @@ local function swingNearby()
                 if (root.Position - part.Position).Magnitude <= 25 then
                     local id = v:GetAttribute("EntityID")
                     if id then
+                        print("Adding ID")
                         hits[#hits+1] = id   -- MUST be only the number
                     end
                 end
@@ -238,6 +271,7 @@ local function swingNearby()
         end
     end
 
+    print("Swinging!")
     if #hits > 0 then
         Packets.SwingTool.send({
             entityIDs = hits,
@@ -246,6 +280,7 @@ local function swingNearby()
             buffer = buffer
         })
     end
+    print("Swung!")
 end
 
 --// LOOP (THROTTLED = BIG FPS BOOST)
@@ -267,7 +302,9 @@ RunService.RenderStepped:Connect(function()
     end
 
     if AUTO_SWING then
+        print("Test1")
         swingNearby()
+        print("Test2")
     end
 end)
 
