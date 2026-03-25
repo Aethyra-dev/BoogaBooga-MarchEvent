@@ -36,7 +36,6 @@ local TargetList = {
     ["Omega Gold Pot"] = {enabled = true, priority = 4},
     ["Water Pot"] = {enabled = true, priority = 0},
     ["Empty Pot"] = {enabled = false, priority = 0},
-    ["Pot o' Gold"] = {enabled = false, priority = 0},
 }
 
 --// SETTINGS
@@ -213,8 +212,11 @@ end
 --// SWING
 local function swingNearby()
     local now = getServerTime()
-    if now - lastSwing < 0.08 then return end
-    lastSwing = now
+    local delay = 0.08 - (now - lastSwing)
+    if delay > 0 then
+        task.wait(delay)
+    end
+    lastSwing = getServerTime()
 
     local hits = {}
 
