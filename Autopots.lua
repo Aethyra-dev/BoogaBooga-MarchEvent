@@ -175,112 +175,85 @@ local function getBestTarget()
 end
 
 --// MOVE
-local currentTween
-local lastTarget = nil
-local lastMoveTime = 0
-
-local JUMP_DISTANCE = 0      -- distance required before it jumps
-local JUMP_HEIGHT = 7.2         -- how high the jump arc goes
 
 local function moveTo(target)
-    if not target or not root then return end
+    if not target or not root or not humanoid then return end
 
     local part = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
     if not part then return end
 
-    local height = part.Size.Y / 2 + 3
+    -- aim slightly above the entity
+    local height = part.Size.Y * 0.5 + 3
     local targetPos = part.Position + Vector3.new(0, height, 0)
 
-    local dist = (root.Position - targetPos).Magnitude
+    local currentPos = root.Position
+    local offset = targetPos - currentPos
+    local dist = offset.Magnitude
 
-    -- already close → don’t move
+    -- already close
     if dist < 3 then return end
 
-    -- cancel old tween
-    if currentTween then
-        currentTween:Cancel()
+    -- movement step using your move_speed
+    local dt = task.wait()
+    local step = move_speed * dt
+
+    local direction = offset.Unit
+    local newPos = currentPos + direction * step
+
+    char:MoveTo(newPos)
+
+    -- SMART JUMP
+    local heightDiff = targetPos.Y - currentPos.Y
+
+    -- jump only if we're still below the pot
+    if heightDiff > 4 and heightDiff < 15 then
+        humanoid.Jump = true
     end
-
-    local time = math.clamp(dist / MOVE_SPEED, 0.1, 2)
-
-    -- WALK (no jump)
-    if dist < JUMP_DISTANCE then
-        currentTween = TweenService:Create(
-            root,
-            TweenInfo.new(time, Enum.EasingStyle.Linear),
-            {CFrame = CFrame.new(targetPos)}
-        )
-
-        currentTween:Play()
-        return
-    end
-
-    -- JUMP (arc movement)
-    local midPoint = (root.Position + targetPos) / 2 + Vector3.new(0, JUMP_HEIGHT, 0)
-
-    local jumpTween1 = TweenService:Create(
-        root,
-        TweenInfo.new(time / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-        {CFrame = CFrame.new(midPoint)}
-    )
-
-    local jumpTween2 = TweenService:Create(
-        root,
-        TweenInfo.new(time / 2, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-        {CFrame = CFrame.new(targetPos)}
-    )
-
-    jumpTween1:Play()
-
-    jumpTween1.Completed:Connect(function()
-        jumpTween2:Play()
-    end)
-
-    currentTween = jumpTween2
-    lastMoveTime = tick()
 end
 
 --// SWING
+local MAX_DISTANCE = 25
+local SWING_COOLDOWN = 0.08
+
 local function swingNearby()
     local now = getServerTime()
-    if now - lastSwing < 0.08 then
-        print("Too fast!")
-        return 
+    if now - lastSwing < SWING_COOLDOWN then
+        return
     end
     lastSwing = now
 
-    -- get valid buffer the same way the original script does
-    local buffer = interpolationBuffer.getBuffer(rendering.clientBuffer)
+    local rootPos = root.Position
 
     local hits = {}
+    local hitCount = 0
 
-    print("Checking Entities")
-    for _, v in ipairs(Entities) do
+    for i = 1, #Entities do
+        local v = Entities[i]
         local data = TargetList[v.Name]
+
         if data and data.enabled then
             local part = v.PrimaryPart or v:FindFirstChildWhichIsA("BasePart")
             if part then
-                if (root.Position - part.Position).Magnitude <= 25 then
+                -- faster distance check (no Magnitude calculation)
+                if (rootPos - part.Position).Magnitude <= MAX_DISTANCE then
                     local id = v:GetAttribute("EntityID")
                     if id then
-                        print("Adding ID")
-                        hits[#hits+1] = id   -- MUST be only the number
+                        hitCount += 1
+                        hits[hitCount] = id
                     end
                 end
             end
         end
     end
 
-    print("Swinging!")
-    if #hits > 0 then
+    if hitCount > 0 then
         Packets.SwingTool.send({
             entityIDs = hits,
             cframe = char:GetPivot(),
             timestamp = now,
-            buffer = buffer
+            buffer = interpolationBuffer.getBuffer(rendering.clientBuffer)
         })
     end
-    print("Swung!")
 end
 
 --// LOOP (THROTTLED = BIG FPS BOOST)
@@ -302,9 +275,7 @@ RunService.RenderStepped:Connect(function()
     end
 
     if AUTO_SWING then
-        print("Test1")
         swingNearby()
-        print("Test2")
     end
 end)
 
