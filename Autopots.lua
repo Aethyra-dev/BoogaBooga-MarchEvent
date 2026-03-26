@@ -24,7 +24,7 @@ local Packets = require(ReplicatedStorage.Modules:WaitForChild("Packets"))
 --// TIME
 local function getServerTime()
     local ok, res = pcall(function()
-        return require(ReplicatedStorage.Modules.Util).getServerTime(true)
+        return require(ReplicatedStorage.Modules.Clock).getServerTime(true)
     end)
     return ok and res or tick()
 end
