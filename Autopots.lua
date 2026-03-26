@@ -182,7 +182,7 @@ local function moveTo(target)
     if not part then return end
 
     -- player references (grab them fresh so nothing is nil)
-    local character = game.Players.LocalPlayer.Character
+    local character = player.Character or player.CharacterAdded:Wait()
     if not character then return end
 
     local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -200,8 +200,8 @@ local function moveTo(target)
     humanoid:MoveTo(targetPos)
 
     -- jump if the pot is higher than you
-    if targetPos.Y - root.Position.Y > 3 then
-        humanoid.Jump = true
+    if targetPos.Y - root.Position.Y > 1 then
+        humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end
 
