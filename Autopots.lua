@@ -175,38 +175,32 @@ local function getBestTarget()
 end
 
 --// MOVE
-
 local function moveTo(target)
-    if not target or not root or not humanoid then return end
+    if not target then return end
 
     local part = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart")
     if not part then return end
 
-    -- aim slightly above the entity
-    local height = part.Size.Y * 0.5 + 3
-    local targetPos = part.Position + Vector3.new(0, height, 0)
+    -- player references (grab them fresh so nothing is nil)
+    local character = game.Players.LocalPlayer.Character
+    if not character then return end
 
-    local currentPos = root.Position
-    local offset = targetPos - currentPos
-    local dist = offset.Magnitude
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    local root = character:FindFirstChild("HumanoidRootPart")
 
-    -- already close
+    if not humanoid or not root then return end
+
+    -- move slightly above the pot
+    local targetPos = part.Position + Vector3.new(0, part.Size.Y/2 + 3, 0)
+
+    local dist = (root.Position - targetPos).Magnitude
     if dist < 3 then return end
 
-    -- movement step using your move_speed
-    local dt = task.wait()
-    local step = move_speed * dt
+    -- THIS is the line that actually moves you
+    humanoid:MoveTo(targetPos)
 
-    local direction = offset.Unit
-    local newPos = currentPos + direction * step
-
-    char:MoveTo(newPos)
-
-    -- SMART JUMP
-    local heightDiff = targetPos.Y - currentPos.Y
-
-    -- jump only if we're still below the pot
-    if heightDiff > 4 and heightDiff < 15 then
+    -- jump if the pot is higher than you
+    if targetPos.Y - root.Position.Y > 3 then
         humanoid.Jump = true
     end
 end
