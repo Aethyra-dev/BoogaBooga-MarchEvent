@@ -3,7 +3,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
-local UIS = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local rendering = require(ReplicatedStorage.Game.rendering)
 local interpolationBuffer = require(ReplicatedStorage.Game.rendering.interpolationBuffer)
@@ -44,6 +44,7 @@ local TargetList = {
 --// SETTINGS
 local AUTO_SWING = false
 local STICK_TO_TARGET = false
+local PLACE_POT = false
 local MOVE_SPEED = 19
 
 local lastSwing = 0
@@ -81,8 +82,9 @@ local function makeBtn(txt, y)
 end
 
 local swingBtn = makeBtn("Auto Swing: OFF", 30)
-local moveBtn = makeBtn("Move To Target: OFF", 60)
-local speedBtn = makeBtn("Move Speed: 19", 90)
+local placeBtn = makeBtn("Place Pots: OFF", 60)
+local moveBtn = makeBtn("Move To Target: OFF", 90)
+local speedBtn = makeBtn("Move Speed: 19", 120)
 
 local listFrame = Instance.new("Frame", frame)
 listFrame.Size = UDim2.new(1,0,0,160)
@@ -111,6 +113,11 @@ end
 swingBtn.MouseButton1Click:Connect(function()
     AUTO_SWING = not AUTO_SWING
     swingBtn.Text = "Auto Swing: " .. (AUTO_SWING and "ON" or "OFF")
+end)
+
+placeBtn.MouseButton1Click:Connect(function()
+    PLACE_POT = not PLACE_POT
+    placeBtn.Text = "Place Pots: " .. (PLACE_POT and "ON" or "OFF")
 end)
 
 moveBtn.MouseButton1Click:Connect(function()
@@ -250,6 +257,39 @@ local function swingNearby()
     end
 end
 
+--// FUNCTION
+local function placeRandomPot()
+    if not char or not root then return end
+
+    -- random position around player
+    local radius = math.random(4, 30) -- how far from player
+    local angle = math.rad(math.random(0, 360))
+
+    local offset = Vector3.new(
+        math.cos(angle) * radius,
+        0,
+        math.sin(angle) * radius
+    )
+
+    local rayOrigin = root.Position + offset
+    local rayDirection = Vector3.new(0, -200, 0)
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {char}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    local result = Workspace:Raycast(rayOrigin, rayDirection, rayParams)
+
+    if result then
+        local groundPos = result.Position
+
+        Packets.PlaceStructure.send({
+            cframe = CFrame.new(groundPos),
+            buildingName = "Empty Pot"
+        })
+    end
+end
+
 --// LOOP (THROTTLED = BIG FPS BOOST)
 local target
 local lastTargetUpdate = 0
@@ -266,6 +306,10 @@ RunService.RenderStepped:Connect(function()
 
     if STICK_TO_TARGET and target then
         moveTo(target)
+    end
+
+    if PLACE_POT then
+        placeRandomPot()
     end
 
     if AUTO_SWING then
