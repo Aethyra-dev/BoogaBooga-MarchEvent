@@ -207,7 +207,7 @@ local function moveTo(target)
     humanoid:MoveTo(targetPos)
 
     -- jump if the pot is higher than you
-    if targetPos.Y - root.Position.Y > 1 then
+    if targetPos.Y - root.Position.Y >= 0.1 then
         humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
     end
 end
@@ -218,9 +218,7 @@ local SWING_COOLDOWN = 0.08
 
 local function swingNearby()
     local now = getServerTime()
-    if now - lastSwing < SWING_COOLDOWN then
-        return
-    end
+    if now - lastSwing < SWING_COOLDOWN then return end
     lastSwing = now
 
     local rootPos = root.Position
